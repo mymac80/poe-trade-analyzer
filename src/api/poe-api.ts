@@ -14,7 +14,16 @@ export class PoeApiClient {
       baseURL: 'https://www.pathofexile.com',
       headers: {
         'Cookie': `POESESSID=${config.poesessid}`,
-        'User-Agent': 'POE-Trader-Analyzer/1.0'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.pathofexile.com/',
+        'Origin': 'https://www.pathofexile.com',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin'
       },
       timeout: 30000
     });
@@ -34,6 +43,8 @@ export class PoeApiClient {
       };
 
       console.log(`Fetching stash tab ${tabIndex}...`);
+      console.log('Request params:', params);
+      console.log('Request headers:', this.client.defaults.headers);
 
       const response = await this.client.get<StashTabResponse>(
         '/character-window/get-stash-items',
@@ -46,14 +57,19 @@ export class PoeApiClient {
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 403) {
+        console.error('API Response:', error.response?.data);
         throw new Error(
-          'Authentication failed. Please check your POESESSID cookie. ' +
-          'Make sure it\'s valid and you\'re logged into pathofexile.com'
+          'Authentication failed (403). Possible causes:\n' +
+          '  - POESESSID cookie is invalid or expired\n' +
+          '  - Account privacy is set to Private (must be Public)\n' +
+          '  - League name is incorrect (check case-sensitivity)\n' +
+          `  - Attempted URL: /character-window/get-stash-items?league=${this.config.league}&realm=${this.config.realm}&accountName=${this.config.accountName}`
         );
       }
       if (error.response?.status === 429) {
         throw new Error('Rate limited by POE API. Please wait a few minutes and try again.');
       }
+      console.error('Full error:', error.response?.data || error.message);
       throw new Error(`Failed to fetch stash tab ${tabIndex}: ${error.message}`);
     }
   }

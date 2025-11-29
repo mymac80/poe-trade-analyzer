@@ -1,4 +1,4 @@
-import { PoeApiClient } from '../api/poe-api';
+import { PoeBrowserApiClient } from '../api/poe-api-browser';
 import { PoeNinjaClient } from '../api/poe-ninja-api';
 import { ItemValuator } from './item-valuator';
 import { Item, ValuedItem, PoeConfig } from '../models/types';
@@ -7,13 +7,13 @@ import { Item, ValuedItem, PoeConfig } from '../models/types';
  * Main analyzer service that coordinates fetching stash data and valuing items
  */
 export class StashAnalyzer {
-  private poeClient: PoeApiClient;
+  private poeClient: PoeBrowserApiClient;
   private ninjaClient: PoeNinjaClient;
   private config: PoeConfig;
 
   constructor(config: PoeConfig) {
     this.config = config;
-    this.poeClient = new PoeApiClient(config);
+    this.poeClient = new PoeBrowserApiClient(config);
     this.ninjaClient = new PoeNinjaClient(config.league);
   }
 
@@ -26,50 +26,58 @@ export class StashAnalyzer {
     console.log(`League: ${this.config.league}`);
     console.log(`Realm: ${this.config.realm}\n`);
 
-    // Fetch market data
-    const marketData = await this.ninjaClient.fetchAllMarketData();
+    // Initialize browser
+    await this.poeClient.initialize();
 
-    // Create valuator
-    const valuator = new ItemValuator(
-      marketData.uniques,
-      marketData.gems,
-      marketData.currency,
-      marketData.fragments,
-      marketData.divination,
-      marketData.oils,
-      marketData.essences,
-      marketData.divinePrice
-    );
+    try {
+      // Fetch market data
+      const marketData = await this.ninjaClient.fetchAllMarketData();
 
-    // Fetch stash tabs
-    console.log('\nFetching stash tabs...\n');
-    const stashTabs = await this.poeClient.getAllStashTabs();
+      // Create valuator
+      const valuator = new ItemValuator(
+        marketData.uniques,
+        marketData.gems,
+        marketData.currency,
+        marketData.fragments,
+        marketData.divination,
+        marketData.oils,
+        marketData.essences,
+        marketData.divinePrice
+      );
 
-    // Collect all items
-    const allItems: Item[] = [];
-    for (const tabData of stashTabs) {
-      allItems.push(...tabData.items);
-    }
+      // Fetch stash tabs
+      console.log('\nFetching stash tabs...\n');
+      const stashTabs = await this.poeClient.getAllStashTabs();
 
-    console.log(`\nTotal items found: ${allItems.length}`);
-    console.log('Analyzing item values...\n');
-
-    // Value all items
-    const valuedItems: ValuedItem[] = [];
-    for (const item of allItems) {
-      const valued = valuator.valueItem(item);
-      if (valued && valued.estimatedValue >= this.config.minValueChaos) {
-        valuedItems.push(valued);
+      // Collect all items
+      const allItems: Item[] = [];
+      for (const tabData of stashTabs) {
+        allItems.push(...tabData.items);
       }
+
+      console.log(`\nTotal items found: ${allItems.length}`);
+      console.log('Analyzing item values...\n');
+
+      // Value all items
+      const valuedItems: ValuedItem[] = [];
+      for (const item of allItems) {
+        const valued = valuator.valueItem(item);
+        if (valued && valued.estimatedValue >= this.config.minValueChaos) {
+          valuedItems.push(valued);
+        }
+      }
+
+      // Sort by value
+      valuedItems.sort((a, b) => b.estimatedValue - a.estimatedValue);
+
+      console.log(`Found ${valuedItems.length} items worth ${this.config.minValueChaos}c or more\n`);
+
+      // Return top N
+      return valuedItems.slice(0, topN);
+    } finally {
+      // Always close browser
+      await this.poeClient.close();
     }
-
-    // Sort by value
-    valuedItems.sort((a, b) => b.estimatedValue - a.estimatedValue);
-
-    console.log(`Found ${valuedItems.length} items worth ${this.config.minValueChaos}c or more\n`);
-
-    // Return top N
-    return valuedItems.slice(0, topN);
   }
 
   /**
@@ -79,48 +87,64 @@ export class StashAnalyzer {
     console.log('\n=== POE Stash Analyzer (Specific Tabs) ===\n');
     console.log(`Tab types: ${tabTypes.join(', ')}\n`);
 
-    // Fetch market data
-    const marketData = await this.ninjaClient.fetchAllMarketData();
+    // Initialize browser
+    await this.poeClient.initialize();
 
-    // Create valuator
-    const valuator = new ItemValuator(
-      marketData.uniques,
-      marketData.gems,
-      marketData.currency,
-      marketData.fragments,
-      marketData.divination,
-      marketData.oils,
-      marketData.essences,
-      marketData.divinePrice
-    );
+    try {
+      // Fetch market data
+      const marketData = await this.ninjaClient.fetchAllMarketData();
 
-    // Fetch specific stash tabs
-    const stashTabs = await this.poeClient.getStashTabsByType(tabTypes);
+      // Create valuator
+      const valuator = new ItemValuator(
+        marketData.uniques,
+        marketData.gems,
+        marketData.currency,
+        marketData.fragments,
+        marketData.divination,
+        marketData.oils,
+        marketData.essences,
+        marketData.divinePrice
+      );
 
-    // Collect all items
-    const allItems: Item[] = [];
-    for (const tabData of stashTabs) {
-      allItems.push(...tabData.items);
-    }
+      // Fetch all stash tabs first
+      const allStashTabs = await this.poeClient.getAllStashTabs();
 
-    console.log(`\nTotal items found: ${allItems.length}`);
-    console.log('Analyzing item values...\n');
+      // Filter by type
+      const stashTabs = allStashTabs.filter(tabData => {
+        const tabIndex = tabData.tabs.findIndex(t => t.selected);
+        if (tabIndex === -1) return false;
+        const tab = tabData.tabs[tabIndex];
+        return tabTypes.some(type => tab.type.toLowerCase().includes(type.toLowerCase()));
+      });
 
-    // Value all items
-    const valuedItems: ValuedItem[] = [];
-    for (const item of allItems) {
-      const valued = valuator.valueItem(item);
-      if (valued && valued.estimatedValue >= this.config.minValueChaos) {
-        valuedItems.push(valued);
+      // Collect all items
+      const allItems: Item[] = [];
+      for (const tabData of stashTabs) {
+        allItems.push(...tabData.items);
       }
+
+      console.log(`\nTotal items found: ${allItems.length}`);
+      console.log('Analyzing item values...\n');
+
+      // Value all items
+      const valuedItems: ValuedItem[] = [];
+      for (const item of allItems) {
+        const valued = valuator.valueItem(item);
+        if (valued && valued.estimatedValue >= this.config.minValueChaos) {
+          valuedItems.push(valued);
+        }
+      }
+
+      // Sort by value
+      valuedItems.sort((a, b) => b.estimatedValue - a.estimatedValue);
+
+      console.log(`Found ${valuedItems.length} items worth ${this.config.minValueChaos}c or more\n`);
+
+      // Return top N
+      return valuedItems.slice(0, topN);
+    } finally {
+      // Always close browser
+      await this.poeClient.close();
     }
-
-    // Sort by value
-    valuedItems.sort((a, b) => b.estimatedValue - a.estimatedValue);
-
-    console.log(`Found ${valuedItems.length} items worth ${this.config.minValueChaos}c or more\n`);
-
-    // Return top N
-    return valuedItems.slice(0, topN);
   }
 }

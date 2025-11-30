@@ -1,0 +1,256 @@
+/* POE Stash Pricer Overlay Styles */
+
+.poe-pricer-panel {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  width: 400px;
+  max-height: 80vh;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #0f3460;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 999999;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #ffffff;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.poe-pricer-header {
+  background: linear-gradient(90deg, #0f3460 0%, #16213e 100%);
+  padding: 12px 16px;
+  border-bottom: 1px solid #0f3460;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.poe-pricer-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e94560;
+}
+
+.poe-pricer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.poe-pricer-btn {
+  background: #e94560;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.poe-pricer-btn:hover {
+  background: #ff5577;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(233, 69, 96, 0.3);
+}
+
+.poe-pricer-btn:active {
+  transform: translateY(0);
+}
+
+.poe-pricer-btn-close {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.poe-pricer-btn-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.poe-pricer-content {
+  padding: 16px;
+  max-height: calc(80vh - 60px);
+  overflow-y: auto;
+}
+
+.poe-pricer-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.poe-pricer-content::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+.poe-pricer-content::-webkit-scrollbar-thumb {
+  background: #0f3460;
+  border-radius: 4px;
+}
+
+.poe-pricer-content::-webkit-scrollbar-thumb:hover {
+  background: #16213e;
+}
+
+.poe-pricer-hint {
+  color: #aaa;
+  font-size: 13px;
+  text-align: center;
+  margin: 20px 0;
+}
+
+.poe-pricer-loading {
+  color: #e94560;
+  font-size: 14px;
+  text-align: center;
+  margin: 20px 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.poe-pricer-error {
+  color: #ff6b6b;
+  font-size: 13px;
+  text-align: center;
+  margin: 20px 0;
+  padding: 12px;
+  background: rgba(255, 107, 107, 0.1);
+  border-radius: 4px;
+  border-left: 3px solid #ff6b6b;
+}
+
+.poe-pricer-summary {
+  background: rgba(233, 69, 96, 0.1);
+  border-left: 3px solid #e94560;
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.poe-pricer-summary strong {
+  color: #e94560;
+}
+
+.poe-pricer-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.poe-pricer-item {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 10px;
+  border-radius: 4px;
+  border-left: 3px solid #4ecdc4;
+  transition: all 0.2s;
+}
+
+.poe-pricer-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(4px);
+}
+
+.poe-pricer-item.confidence-high {
+  border-left-color: #4ecdc4;
+}
+
+.poe-pricer-item.confidence-medium {
+  border-left-color: #ffe66d;
+}
+
+.poe-pricer-item.confidence-low {
+  border-left-color: #ff6b6b;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffd700;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.item-details {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #aaa;
+}
+
+.item-confidence,
+.item-liquidity {
+  display: flex;
+  align-items: center;
+}
+
+.item-notes {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #4ecdc4;
+  font-style: italic;
+}
+
+/* Liquidity indicators */
+.liquidity-instant .item-liquidity::before {
+  content: '⚡ ';
+  color: #4ecdc4;
+}
+
+.liquidity-hours .item-liquidity::before {
+  content: '⏱ ';
+  color: #ffe66d;
+}
+
+.liquidity-days .item-liquidity::before {
+  content: '📅 ';
+  color: #ffa500;
+}
+
+.liquidity-slow .item-liquidity::before {
+  content: '🐌 ';
+  color: #ff6b6b;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .poe-pricer-panel {
+    width: calc(100% - 40px);
+    right: 20px;
+    left: 20px;
+  }
+}

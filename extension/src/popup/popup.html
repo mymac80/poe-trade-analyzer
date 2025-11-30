@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POE Stash Pricer</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="popup-header">
+      <h1>POE Stash Pricer</h1>
+      <p class="subtitle">Configure your pricing settings</p>
+    </div>
+
+    <div class="popup-content">
+      <div class="setting-group">
+        <label for="league-select">League</label>
+        <input
+          type="text"
+          id="league-select"
+          class="input-field"
+          list="league-options"
+          placeholder="Enter your league name"
+          value="Settlers"
+        >
+        <datalist id="league-options">
+          <option value="Settlers">
+          <option value="Hardcore Settlers">
+          <option value="Standard">
+          <option value="Hardcore">
+        </datalist>
+        <p class="hint">Select your current league</p>
+      </div>
+
+      <div class="setting-group">
+        <label for="min-value">Minimum Value (Chaos)</label>
+        <input
+          type="number"
+          id="min-value"
+          class="input-field"
+          min="1"
+          max="1000"
+          value="5"
+        >
+        <p class="hint">Only show items worth at least this many chaos orbs</p>
+      </div>
+
+      <div class="button-group">
+        <button id="save-settings" class="btn btn-primary">Save Settings</button>
+        <button id="refresh-data" class="btn btn-secondary">Refresh Market Data</button>
+      </div>
+
+      <div id="status-message" class="status-message"></div>
+
+      <div class="info-section">
+        <h3>How to Use</h3>
+        <ol>
+          <li>Navigate to your stash page on pathofexile.com</li>
+          <li>Click the "Analyze" button in the overlay panel</li>
+          <li>View valuable items and their estimated prices</li>
+        </ol>
+      </div>
+
+      <div class="info-section">
+        <h3>Features</h3>
+        <ul>
+          <li>Real-time pricing from poe.ninja</li>
+          <li>Supports uniques, gems, currency, divination cards</li>
+          <li>6-link detection and special mod recognition</li>
+          <li>Liquidity estimates for faster trading</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="popup-footer">
+      <p>Data from <a href="https://poe.ninja" target="_blank">poe.ninja</a></p>
+      <p class="version">v1.0.0</p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

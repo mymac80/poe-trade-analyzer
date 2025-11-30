@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "POE Stash Pricer",
+  "version": "1.0.0",
+  "description": "Automatically price items in your Path of Exile stash tabs using poe.ninja market data",
+  "permissions": [
+    "storage",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://poe.ninja/*",
+    "https://www.pathofexile.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.pathofexile.com/account/view-profile/*",
+        "https://www.pathofexile.com/account/view-stash/*",
+        "https://www.pathofexile.com/my-account/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["https://www.pathofexile.com/*"]
+    }
+  ]
+}

@@ -390,6 +390,14 @@ function displayResults(items: ValuedItem[]): void {
         });
 
         if (response.success && response.data) {
+          // Check if no results were found
+          if (response.data.noResults) {
+            target.textContent = 'No results';
+            target.style.backgroundColor = '#FF9800'; // Orange color for "no results"
+            console.log('[POE Pricer] Trade search opened with 0 results - check the tab to adjust filters');
+            return;
+          }
+
           // Update the valued item with market data
           valued.marketData = {
             listingsFound: response.data.totalListings,
@@ -403,10 +411,12 @@ function displayResults(items: ValuedItem[]): void {
           displayResults(items);
         } else {
           target.textContent = 'Error';
+          target.style.backgroundColor = '#f44336'; // Red color for actual errors
           console.error('[POE Pricer] Trade price fetch failed:', response.error);
         }
       } catch (error) {
         target.textContent = 'Error';
+        target.style.backgroundColor = '#f44336'; // Red color for actual errors
         console.error('[POE Pricer] Error fetching trade price:', error);
       }
     });

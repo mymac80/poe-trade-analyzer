@@ -344,6 +344,40 @@ Values POE items based on market data:
   - **Special notes**: Includes sacrifice/reward details, failure risk warning, "Check trade site for exact pricing"
   - **Limitation**: Less accurate than poe.ninja-based prices, but better than missing valuable items entirely
 
+- **Inscribed Ultimatum Trade Search** (Added 2024-12-01):
+  - **Feature**: "Check Trade Price" button on Inscribed Ultimatums opens POE trade site with filters
+  - **Why needed**: Heuristic pricing is estimates only; users need to check actual market prices
+  - **Implementation**: Uses POE's official trade API (`/api/trade/search/{league}`)
+  - **Three-Filter System**:
+    1. `ultimatum_input` - Sacrifice item (e.g., "The Harvest", "Orb of Annulment")
+    2. `ultimatum_reward` - Reward TYPE (e.g., "ExchangeUnique", "DoubleCurrency")
+    3. `ultimatum_output` - Output item (e.g., "Winterweave") - only for unique exchanges
+  - **Reward Type Detection** (automatic):
+    - "Doubles sacrificed Currency" → `DoubleCurrency` (no output filter)
+    - "Triples sacrificed Currency" → `TripleCurrency` (no output filter)
+    - "Doubles Divination Cards" → `DoubleDivCards` (no output filter)
+    - "Triples Divination Cards" → `TripleDivCards` (no output filter)
+    - "Mirror" in text → `MirrorRare` (no output filter)
+    - Unique item name → `ExchangeUnique` (includes output filter)
+  - **Smart Output Filtering**:
+    - Currency/card doubling: Output filter omitted (reward text isn't an item name)
+    - Unique exchange: Output filter included (specific item like "Winterweave")
+  - **0 Results Handling**:
+    - Opens trade tab for 5 seconds so user can see "0 results"
+    - Auto-closes tab to avoid clutter
+    - Button shows "No results" (orange) vs "Error" (red) for actual failures
+  - **Status Filter**: Uses `"available"` (not `"online"`) to match POE trade site behavior
+  - **User Flow**:
+    1. User clicks "Check Trade Price" on an Inscribed Ultimatum
+    2. Extension creates trade search with all applicable filters
+    3. If results > 0: Opens tab and scrapes pricing data (shows in overlay)
+    4. If results = 0: Opens tab for 5s, auto-closes, shows "No results" button
+    5. If error: Shows "Error" button (red) with console logs
+  - **Files**:
+    - `shared/services/trade-search-builder.ts` - Build query and detect reward types
+    - `background/background.ts` - Create search via API, handle 0 results
+    - `content/content.ts` - Button UI and state management
+
 - **Scarab Support** (Fixed 2024-11-30):
   - **Challenge**: Scarabs have `frameType: 0` (Normal), not `frameType: 5` (Currency)
   - **Solution 1 - API Fetching**: `getScarabPrices()` tries multiple endpoints:
@@ -611,8 +645,9 @@ console.error('[POE Pricer] Error:', error);
 - [ ] Export results to clipboard/CSV
 
 ### Medium Priority
-- [x] Support for Inscribed Ultimatums (added heuristic-based valuation)
-- [ ] Support for more item types (maps, fossils, scarabs, etc.)
+- [x] Support for Inscribed Ultimatums (added heuristic valuation + trade search integration)
+- [x] Scarab support (fixed pricing and detection)
+- [ ] Support for more item types (maps, fossils, etc.)
 - [ ] Price history / trending indicators
 - [ ] Bulk listing price suggestions
 - [ ] Settings for highlighting thresholds
@@ -773,6 +808,8 @@ When working on this project:
 6. **Update manifest version** when making breaking changes
 7. **Reuse existing valuation logic** - it's well-tested and accurate
 8. **Variant matching is critical** - Gems and Uniques have multiple poe.ninja variants; always use scoring + tiebreaker logic
+9. **Trade search uses 3 filters** - For Inscribed Ultimatums: input (sacrifice), reward (type), output (item name, conditional)
+10. **Reward type detection is keyword-based** - Looks for "double", "triple", "mirror" in reward text to determine filter codes
 
 ### When POE Changes Break the Extension
 
@@ -791,8 +828,22 @@ If poe.ninja API changes:
 3. Update types in `models/types.ts` if needed
 4. Test all item categories
 
+### When POE Trade API Changes
+
+If POE's trade API changes (affects Inscribed Ultimatum searches):
+1. Check `trade-search-builder.ts` for filter structure
+2. Monitor browser console for API errors (400/404 responses)
+3. Inspect working trade searches on pathofexile.com/trade for correct filter codes
+4. Test reward type detection with all ultimatum categories:
+   - Currency doubling/tripling
+   - Divination card doubling/tripling
+   - Unique item exchanges
+   - Mirror rare items
+5. Verify `ultimatum_input`, `ultimatum_reward`, and `ultimatum_output` filter names
+6. Update reward type codes if POE changes them (e.g., "DoubleCurrency" → "Currency")
+
 ---
 
-**Last Updated**: 2024-11-30
+**Last Updated**: 2024-12-01
 **Extension Version**: 1.0.0
 **POE Version**: Tested on Settlers League

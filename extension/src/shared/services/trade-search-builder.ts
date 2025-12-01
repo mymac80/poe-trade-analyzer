@@ -12,22 +12,16 @@ export interface TradeSearchQuery {
 
 /**
  * Build a trade search for an Inscribed Ultimatum
+ * @param includeOutput - If false, only filter by sacrifice (broader search)
  */
-export function buildInscribedUltimatumSearch(item: Item, league: string): TradeSearchQuery {
-  console.log('[Trade Search] buildInscribedUltimatumSearch called');
-  console.log('[Trade Search] Item:', item);
-  console.log('[Trade Search] League:', league);
-
+export function buildInscribedUltimatumSearch(item: Item, league: string, includeOutput: boolean = true): TradeSearchQuery {
   // Extract ultimatum details from the item
   const details = extractUltimatumDetails(item);
-  console.log('[Trade Search] Details extracted:', details);
 
   if (!details) {
     console.error('[Trade Search] Could not extract Ultimatum details from item');
     throw new Error('Could not extract Ultimatum details from item');
   }
-
-  console.log('[Trade Search] Details validation passed ✓');
 
   // For now, we'll construct a manual search URL
   // In the future, we could use the trade API to create programmatic searches
@@ -43,11 +37,37 @@ export function buildInscribedUltimatumSearch(item: Item, league: string): Trade
   // Note: POE trade searches require creating a search via POST request first,
   // which returns a query ID. We can't easily construct a direct URL.
 
-  // Alternative approach: Return a search query object that can be POSTed
+  // Build ultimatum filters object
+  const ultimatumFilters: any = {};
+
+  // Add sacrifice filter (input)
+  if (details.sacrifice) {
+    ultimatumFilters.ultimatum_input = {
+      option: details.sacrifice
+    };
+  }
+
+  // Add reward type filter (what KIND of reward)
+  const rewardTypeResult = determineRewardType(details.sacrifice, details.reward);
+  if (rewardTypeResult) {
+    ultimatumFilters.ultimatum_reward = {
+      option: rewardTypeResult.rewardType
+    };
+
+    // Add reward output filter (specific item name)
+    // Only include for unique exchanges, not for doubling/tripling/mirror rewards
+    if (includeOutput && rewardTypeResult.shouldIncludeOutput && details.reward) {
+      ultimatumFilters.ultimatum_output = {
+        option: details.reward
+      };
+    }
+  }
+
+  // Build the complete API query
   const apiQuery = {
     query: {
       status: {
-        option: "online" // Only show online sellers
+        option: "available" // Show available listings (online + offline)
       },
       type: "Inscribed Ultimatum",
       stats: [
@@ -59,11 +79,7 @@ export function buildInscribedUltimatumSearch(item: Item, league: string): Trade
       ],
       filters: {
         ultimatum_filters: {
-          filters: {
-            // Future: Add specific input/reward filters here
-            // "ultimatum_input": { "option": "..." }
-            // "ultimatum_reward": { "option": "..." }
-          },
+          filters: ultimatumFilters,
           disabled: false
         }
       }
@@ -73,18 +89,48 @@ export function buildInscribedUltimatumSearch(item: Item, league: string): Trade
     }
   };
 
-  // Add sacrifice filter if we know it
-  if (details.sacrifice) {
-    // Note: This would need to be added as a specific filter
-    // POE trade uses complex filter IDs that we'd need to map
-    console.log(`[Trade Search] Would filter by sacrifice: ${details.sacrifice}`);
-  }
-
   return {
     league,
     searchUrl: baseUrl,
     apiQuery
   };
+}
+
+/**
+ * Determine the reward type code for POE trade API
+ * Returns { rewardType, shouldIncludeOutput }
+ */
+function determineRewardType(sacrifice: string, reward: string): { rewardType: string; shouldIncludeOutput: boolean } | null {
+  if (!reward) return null;
+
+  const rewardLower = reward.toLowerCase();
+  const sacrificeLower = sacrifice.toLowerCase();
+
+  // Check for doubling/tripling keywords in reward text
+  // Examples: "Doubles sacrificed Currency", "Triples sacrificed Currency"
+  if (rewardLower.includes('double') && rewardLower.includes('currency')) {
+    return { rewardType: 'DoubleCurrency', shouldIncludeOutput: false };
+  }
+
+  if (rewardLower.includes('triple') && rewardLower.includes('currency')) {
+    return { rewardType: 'TripleCurrency', shouldIncludeOutput: false };
+  }
+
+  if (rewardLower.includes('double') && (rewardLower.includes('divination') || rewardLower.includes('card'))) {
+    return { rewardType: 'DoubleDivCards', shouldIncludeOutput: false };
+  }
+
+  if (rewardLower.includes('triple') && (rewardLower.includes('divination') || rewardLower.includes('card'))) {
+    return { rewardType: 'TripleDivCards', shouldIncludeOutput: false };
+  }
+
+  if (rewardLower.includes('mirror')) {
+    return { rewardType: 'MirrorRare', shouldIncludeOutput: false };
+  }
+
+  // If none of the above, it's likely a unique item exchange
+  // (sacrifice one unique, get a different specific unique)
+  return { rewardType: 'ExchangeUnique', shouldIncludeOutput: true };
 }
 
 /**
@@ -98,11 +144,8 @@ function extractUltimatumDetails(item: Item): {
   multiplier: string;
 } | null {
   try {
-    console.log('[Trade Search] Extracting details from item:', item);
-
     // Inscribed Ultimatums have their details in the properties array
     const properties = item.properties || [];
-    console.log('[Trade Search] Properties:', properties);
 
     let challenge = '';
     let areaLevel = 0;
@@ -112,17 +155,13 @@ function extractUltimatumDetails(item: Item): {
 
     for (const prop of properties) {
       if (prop.name === 'Challenge') {
-        // Format: { name: "Challenge", values: [["Stand in the Stone Circles", 0]] }
         challenge = prop.values?.[0]?.[0] || '';
       } else if (prop.name === 'Area Level') {
-        // Format: { name: "Area Level", values: [["83", 0]] }
         const levelStr = prop.values?.[0]?.[0] || '0';
         areaLevel = parseInt(levelStr);
       } else if (prop.name.includes('Requires Sacrifice')) {
-        // Format: { name: "Requires Sacrifice: {0} {1}", values: [["Divine Orb", 18], ["x1", 0]] }
         sacrifice = prop.values?.[0]?.[0] || '';
       } else if (prop.name.includes('Reward')) {
-        // Format: { name: "Reward: {0}", values: [["Doubles sacrificed Currency", 0]] }
         reward = prop.values?.[0]?.[0] || '';
 
         // Extract multiplier (e.g., "doubles", "triples")
@@ -132,10 +171,8 @@ function extractUltimatumDetails(item: Item): {
       }
     }
 
-    console.log('[Trade Search] Extracted:', { challenge, areaLevel, sacrifice, reward, multiplier });
-
     if (!challenge || !sacrifice) {
-      console.warn('[Trade Search] Missing required fields - challenge:', challenge, 'sacrifice:', sacrifice);
+      console.warn('[Trade Search] Missing required fields - challenge or sacrifice not found');
       return null;
     }
 
@@ -154,14 +191,11 @@ function extractUltimatumDetails(item: Item): {
 
 /**
  * Create a trade search via the official API
+ * Returns { url, resultCount } or null on error
  */
-export async function createTradeSearch(query: any, league: string): Promise<string | null> {
+export async function createTradeSearch(query: any, league: string): Promise<{ url: string; resultCount: number } | null> {
   try {
-    console.log('[Trade Search] Creating search with query:', JSON.stringify(query, null, 2));
-    console.log('[Trade Search] League:', league);
-
     const url = `https://www.pathofexile.com/api/trade/search/${encodeURIComponent(league)}`;
-    console.log('[Trade Search] URL:', url);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -171,28 +205,40 @@ export async function createTradeSearch(query: any, league: string): Promise<str
       body: JSON.stringify(query)
     });
 
-    console.log('[Trade Search] Response status:', response.status);
-
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[Trade Search] API error response:', errorText);
+      console.error('[Trade Search] API error:', errorText);
       throw new Error(`Trade API returned ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('[Trade Search] Response data:', data);
 
-    if (data.id) {
-      // Return the full search URL
-      const searchUrl = `https://www.pathofexile.com/trade/search/${encodeURIComponent(league)}/${data.id}`;
-      console.log('[Trade Search] Search URL created:', searchUrl);
-      return searchUrl;
+    if (data.error) {
+      console.error('[Trade Search] API returned error:', data.error);
+      throw new Error(`Trade API error: ${JSON.stringify(data.error)}`);
     }
 
-    console.warn('[Trade Search] No ID in response');
+    if (data.id) {
+      const totalResults = data.total || 0;
+      const searchUrl = `https://www.pathofexile.com/trade/search/${encodeURIComponent(league)}/${data.id}`;
+
+      // Log the successful search creation (user finds this helpful!)
+      console.log('[POE Pricer] Trade search created successfully:', searchUrl);
+
+      if (totalResults === 0) {
+        console.warn('[Trade Search] Search returned 0 results - no listings found for this exact combination');
+      }
+
+      return {
+        url: searchUrl,
+        resultCount: totalResults
+      };
+    }
+
+    console.warn('[Trade Search] No search ID returned from API');
     return null;
   } catch (error) {
-    console.error('[Trade Search] Error creating search:', error);
+    console.error('[Trade Search] Error creating search:', error instanceof Error ? error.message : error);
     return null;
   }
 }

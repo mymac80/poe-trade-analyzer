@@ -335,6 +335,19 @@ function displayResults(items: ValuedItem[]): void {
     // Check if item supports trade search
     const showTradeButton = supportsTradeSearch(item);
 
+    // Format price trend if available
+    let trendHtml = '';
+    if (valued.priceHistory && valued.priceHistory.totalChange !== undefined) {
+      const change = valued.priceHistory.totalChange;
+      const changeSign = change >= 0 ? '+' : '';
+      const trendColor = change > 0 ? '#4CAF50' : change < 0 ? '#f44336' : '#888';
+      const trendIcon = change > 0 ? '📈' : change < 0 ? '📉' : '➡️';
+
+      trendHtml = `<div class="item-trend" style="color: ${trendColor}; font-size: 0.85em;">
+        ${trendIcon} ${changeSign}${change.toFixed(1)}% (7 days)
+      </div>`;
+    }
+
     html += `
       <div class="poe-pricer-item ${confidenceClass}" data-item-index="${i}">
         <div class="item-header">
@@ -345,6 +358,7 @@ function displayResults(items: ValuedItem[]): void {
           <span class="item-confidence">${valued.confidence} confidence</span>
           <span class="item-liquidity">${valued.liquidityEstimate}</span>
         </div>
+        ${trendHtml}
         ${valued.specialNotes && valued.specialNotes.length > 0 ?
           `<div class="item-notes">${valued.specialNotes.join(', ')}</div>` : ''}
         ${valued.marketData ?

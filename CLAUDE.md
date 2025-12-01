@@ -154,12 +154,12 @@ poe-trader/
 
 External APIs:
   └─> poe.ninja API (https://poe.ninja/api/data)
-      • Currency prices
-      • Unique item prices
-      • Skill gem prices
-      • Divination card prices
-      • Fragment prices
-      • Oil & essence prices
+      • Currency prices (with 7-day sparkline data)
+      • Unique item prices (with price history)
+      • Skill gem prices (with trends)
+      • Divination card prices (with trends)
+      • Fragment prices (with sparkline)
+      • Oil & essence prices (with trends)
 ```
 
 ### Data Flow
@@ -195,6 +195,7 @@ External APIs:
     • Total value (chaos & divine)
     • Top 20 items with:
       - Name, value, confidence, liquidity
+      - 7-day price trend (percentage change with color-coded icon)
       - Special notes (6-link, gem level, etc.)
 ```
 
@@ -393,6 +394,35 @@ Values POE items based on market data:
     - Ultimatum Scarab of Catalysing: ~195c
     - Breach Scarab of Lordship: ~869c (86923c was a poe.ninja display bug)
 
+- **Price Trend Support** (Added 2024-12-01):
+  - **Feature**: Display 7-day price trend for items with market data
+  - **Data Source**: poe.ninja API provides sparkline data (historical price points) and totalChange (percentage)
+  - **Implementation**:
+    - Changed storage from simple `number` to full `PoeNinjaCurrencyLine` objects to preserve sparkline data
+    - All valuation methods extract and return `priceHistory` with sparkline data
+    - Currency items use `lowConfidencePaySparkLine` or `lowConfidenceReceiveSparkLine`
+    - Unique items and gems use `sparkline` or `lowConfidenceSparkline`
+    - Divination cards also include sparkline data
+  - **UI Display**:
+    - Shows color-coded trend indicator: 📈 (green, rising), 📉 (red, falling), ➡️ (gray, stable)
+    - Format: `📈 +22.0% (7 days)` or `📉 -5.3% (7 days)`
+    - Appears below confidence/liquidity row in item overlay
+  - **Coverage**:
+    - ✅ Currency (Divine, Exalted, etc.)
+    - ✅ Fragments & Scarabs
+    - ✅ Unique items
+    - ✅ Skill gems
+    - ✅ Divination cards
+    - ✅ Oils & essences
+    - ❌ Inscribed Ultimatums (no market data - heuristic valuation only)
+    - ❌ Rare/Magic items (no individual market tracking)
+  - **Example**:
+    ```
+    Divine Orb                               200c
+    high confidence   instant
+    📈 +2.0% (7 days)
+    ```
+
 - **Returns**:
   - `estimatedValue` - Price in chaos orbs
   - `divineValue` - Price in divine orbs
@@ -400,6 +430,7 @@ Values POE items based on market data:
   - `reasoning` - Explanation of price
   - `liquidityEstimate` - instant/hours/days/slow
   - `specialNotes` - Array of special attributes
+  - `priceHistory` - Optional 7-day price trend data (sparkline array + totalChange percentage)
 
 ### 3. Content Script (`content/content.ts`)
 

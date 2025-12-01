@@ -201,6 +201,10 @@ export interface ValuedItem {
     lowestPrice?: number; // Absolute lowest (might be lowball)
     trend?: 'rising' | 'falling' | 'stable';
   };
+  priceHistory?: {
+    sparkline?: number[]; // Historical price data points
+    totalChange: number; // Percentage change over period (e.g., +22%, -5%)
+  };
   liquidityEstimate: 'instant' | 'hours' | 'days' | 'slow';
   specialNotes?: string[];
 }

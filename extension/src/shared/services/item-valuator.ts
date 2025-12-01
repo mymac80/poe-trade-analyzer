@@ -1,4 +1,4 @@
-import { Item, ValuedItem, PoeNinjaResponse, PoeNinjaCurrencyResponse, PoeNinjaLine } from '../models/types';
+import { Item, ValuedItem, PoeNinjaResponse, PoeNinjaCurrencyResponse, PoeNinjaLine, PoeNinjaCurrencyLine } from '../models/types';
 
 /**
  * Service for valuing items based on market data
@@ -6,11 +6,11 @@ import { Item, ValuedItem, PoeNinjaResponse, PoeNinjaCurrencyResponse, PoeNinjaL
 export class ItemValuator {
   private uniqueItems: Map<string, PoeNinjaLine[]> = new Map(); // Changed to array for multiple variants
   private gems: Map<string, PoeNinjaLine[]> = new Map();
-  private currency: Map<string, number> = new Map();
-  private fragments: Map<string, number> = new Map();
+  private currency: Map<string, PoeNinjaCurrencyLine> = new Map(); // Store full line for sparkline data
+  private fragments: Map<string, PoeNinjaCurrencyLine> = new Map();
   private divination: Map<string, PoeNinjaLine> = new Map();
-  private oils: Map<string, number> = new Map();
-  private essences: Map<string, number> = new Map();
+  private oils: Map<string, PoeNinjaCurrencyLine> = new Map();
+  private essences: Map<string, PoeNinjaCurrencyLine> = new Map();
   private divinePrice: number;
 
   constructor(
@@ -54,14 +54,14 @@ export class ItemValuator {
       this.gems.get(key)!.push(line);
     }
 
-    // Load currency
+    // Load currency (store full line for sparkline data)
     for (const line of currencyData.lines) {
-      this.currency.set(this.normalizeItemName(line.currencyTypeName), line.chaosEquivalent);
+      this.currency.set(this.normalizeItemName(line.currencyTypeName), line);
     }
 
-    // Load fragments
+    // Load fragments (store full line for sparkline data)
     for (const line of fragmentData.lines) {
-      this.fragments.set(this.normalizeItemName(line.currencyTypeName), line.chaosEquivalent);
+      this.fragments.set(this.normalizeItemName(line.currencyTypeName), line);
     }
 
     // Load divination cards
@@ -69,14 +69,14 @@ export class ItemValuator {
       this.divination.set(this.normalizeItemName(line.name), line);
     }
 
-    // Load oils
+    // Load oils (store full line for sparkline data)
     for (const line of oilData.lines) {
-      this.oils.set(this.normalizeItemName(line.currencyTypeName), line.chaosEquivalent);
+      this.oils.set(this.normalizeItemName(line.currencyTypeName), line);
     }
 
-    // Load essences
+    // Load essences (store full line for sparkline data)
     for (const line of essenceData.lines) {
-      this.essences.set(this.normalizeItemName(line.currencyTypeName), line.chaosEquivalent);
+      this.essences.set(this.normalizeItemName(line.currencyTypeName), line);
     }
   }
 
@@ -96,6 +96,7 @@ export class ItemValuator {
     let reasoning = '';
     let liquidityEstimate: 'instant' | 'hours' | 'days' | 'slow' = 'slow';
     const specialNotes: string[] = [];
+    let priceHistory: { sparkline?: number[]; totalChange: number } | undefined;
 
     // Check for Inscribed Ultimatum (special case, not based on frameType)
     if (this.isInscribedUltimatum(item)) {
@@ -106,6 +107,7 @@ export class ItemValuator {
         reasoning = ultimatumValue.reasoning;
         liquidityEstimate = ultimatumValue.liquidity;
         specialNotes.push(...(ultimatumValue.notes || []));
+        priceHistory = ultimatumValue.priceHistory;
       }
     }
 
@@ -120,6 +122,7 @@ export class ItemValuator {
           reasoning = uniqueValue.reasoning;
           liquidityEstimate = uniqueValue.liquidity;
           specialNotes.push(...(uniqueValue.notes || []));
+          priceHistory = uniqueValue.priceHistory;
         }
         break;
 
@@ -131,6 +134,7 @@ export class ItemValuator {
           reasoning = gemValue.reasoning;
           liquidityEstimate = gemValue.liquidity;
           specialNotes.push(...(gemValue.notes || []));
+          priceHistory = gemValue.priceHistory;
         }
         break;
 
@@ -141,6 +145,7 @@ export class ItemValuator {
           confidence = 'high';
           reasoning = currencyValue.reasoning;
           liquidityEstimate = 'instant';
+          priceHistory = currencyValue.priceHistory;
         }
         break;
 
@@ -151,6 +156,7 @@ export class ItemValuator {
           confidence = divValue.confidence;
           reasoning = divValue.reasoning;
           liquidityEstimate = divValue.liquidity;
+          priceHistory = divValue.priceHistory;
         }
         break;
 
@@ -165,6 +171,7 @@ export class ItemValuator {
           confidence = 'high';
           reasoning = currencyLikeValue.reasoning;
           liquidityEstimate = 'instant';
+          priceHistory = currencyLikeValue.priceHistory;
           break;
         }
 
@@ -176,6 +183,7 @@ export class ItemValuator {
           reasoning = rareValue.reasoning;
           liquidityEstimate = rareValue.liquidity;
           specialNotes.push(...(rareValue.notes || []));
+          priceHistory = rareValue.priceHistory;
         }
         break;
       }
@@ -202,7 +210,8 @@ export class ItemValuator {
       reasoning,
       suggestedPrice,
       liquidityEstimate,
-      specialNotes: specialNotes.length > 0 ? specialNotes : undefined
+      specialNotes: specialNotes.length > 0 ? specialNotes : undefined,
+      priceHistory
     };
   }
 
@@ -212,6 +221,7 @@ export class ItemValuator {
     reasoning: string;
     liquidity: 'instant' | 'hours' | 'days' | 'slow';
     notes?: string[];
+    priceHistory?: { sparkline?: number[]; totalChange: number };
   } | null {
     const itemName = item.name || item.typeLine;
     const baseType = item.baseType || item.typeLine;
@@ -293,12 +303,24 @@ export class ItemValuator {
       value > 20 ? 'days' :
       'slow';
 
+    // Extract price history (sparkline)
+    let priceHistory: { sparkline?: number[]; totalChange: number } | undefined;
+    const sparklineData = bestMatch.sparkline || bestMatch.lowConfidenceSparkline;
+
+    if (sparklineData) {
+      priceHistory = {
+        sparkline: sparklineData.data,
+        totalChange: sparklineData.totalChange
+      };
+    }
+
     return {
       value,
       confidence: bestScore >= 20 ? 'high' : bestScore >= 10 ? 'medium' : 'low',
       reasoning: `Unique "${itemName}" (${bestMatch.links || 0}-link${item.corrupted ? ', corrupted' : ''})`,
       liquidity,
-      notes: notes.length > 0 ? notes : undefined
+      notes: notes.length > 0 ? notes : undefined,
+      priceHistory
     };
   }
 
@@ -308,6 +330,7 @@ export class ItemValuator {
     reasoning: string;
     liquidity: 'instant' | 'hours' | 'days' | 'slow';
     notes?: string[];
+    priceHistory?: { sparkline?: number[]; totalChange: number };
   } | null {
     const gemName = item.typeLine;
     const key = this.normalizeItemName(gemName);
@@ -370,48 +393,80 @@ export class ItemValuator {
       value > 10 ? 'days' :
       'slow';
 
+    // Extract price history (sparkline)
+    let priceHistory: { sparkline?: number[]; totalChange: number } | undefined;
+    const sparklineData = bestMatch.sparkline || bestMatch.lowConfidenceSparkline;
+
+    if (sparklineData) {
+      priceHistory = {
+        sparkline: sparklineData.data,
+        totalChange: sparklineData.totalChange
+      };
+    }
+
     return {
       value,
       confidence: bestScore >= 20 ? 'high' : 'medium',
       reasoning: `Gem ${gemName} (${level}/${quality}${item.corrupted ? ', corrupted' : ''})`,
       liquidity,
-      notes: notes.length > 0 ? notes : undefined
+      notes: notes.length > 0 ? notes : undefined,
+      priceHistory
     };
   }
 
-  private valueCurrency(item: Item): { value: number; reasoning: string } | null {
+  private valueCurrency(item: Item): {
+    value: number;
+    reasoning: string;
+    priceHistory?: { sparkline?: number[]; totalChange: number };
+  } | null {
     const currencyName = item.typeLine;
     const key = this.normalizeItemName(currencyName);
 
     // Check currency map
-    let chaosValue = this.currency.get(key);
+    let currencyLine = this.currency.get(key);
 
     // Check fragments map
-    if (!chaosValue) {
-      chaosValue = this.fragments.get(key);
+    if (!currencyLine) {
+      currencyLine = this.fragments.get(key);
     }
 
     // Check oils map
-    if (!chaosValue) {
-      chaosValue = this.oils.get(key);
+    if (!currencyLine) {
+      currencyLine = this.oils.get(key);
     }
 
     // Check essences map
-    if (!chaosValue) {
-      chaosValue = this.essences.get(key);
+    if (!currencyLine) {
+      currencyLine = this.essences.get(key);
     }
 
-    if (!chaosValue) {
+    if (!currencyLine) {
       return null;
     }
+
+    const chaosValue = currencyLine.chaosEquivalent;
 
     // Account for stack size
     const stackSize = this.getStackSize(item);
     const totalValue = chaosValue * stackSize;
 
+    // Extract price history (sparkline)
+    let priceHistory: { sparkline?: number[]; totalChange: number } | undefined;
+
+    // Try pay sparkline first (most reliable for currencies)
+    const sparklineData = currencyLine.lowConfidencePaySparkLine || currencyLine.lowConfidenceReceiveSparkLine;
+
+    if (sparklineData) {
+      priceHistory = {
+        sparkline: sparklineData.data,
+        totalChange: sparklineData.totalChange
+      };
+    }
+
     return {
       value: totalValue,
-      reasoning: `${currencyName} x${stackSize} @ ${chaosValue.toFixed(2)}c each`
+      reasoning: `${currencyName} x${stackSize} @ ${chaosValue.toFixed(2)}c each`,
+      priceHistory
     };
   }
 
@@ -420,6 +475,7 @@ export class ItemValuator {
     confidence: 'high' | 'medium' | 'low';
     reasoning: string;
     liquidity: 'instant' | 'hours' | 'days' | 'slow';
+    priceHistory?: { sparkline?: number[]; totalChange: number };
   } | null {
     const cardName = item.typeLine;
     const key = this.normalizeItemName(cardName);
@@ -437,11 +493,23 @@ export class ItemValuator {
       value > 10 ? 'days' :
       'slow';
 
+    // Extract price history (sparkline)
+    let priceHistory: { sparkline?: number[]; totalChange: number } | undefined;
+    const sparklineData = marketData.sparkline || marketData.lowConfidenceSparkline;
+
+    if (sparklineData) {
+      priceHistory = {
+        sparkline: sparklineData.data,
+        totalChange: sparklineData.totalChange
+      };
+    }
+
     return {
       value,
       confidence: 'high',
       reasoning: `${cardName} x${stackSize} @ ${marketData.chaosValue.toFixed(1)}c each`,
-      liquidity
+      liquidity,
+      priceHistory
     };
   }
 
@@ -451,6 +519,7 @@ export class ItemValuator {
     reasoning: string;
     liquidity: 'instant' | 'hours' | 'days' | 'slow';
     notes?: string[];
+    priceHistory?: { sparkline?: number[]; totalChange: number };
   } | null {
     const notes: string[] = [];
 
@@ -498,6 +567,7 @@ export class ItemValuator {
     reasoning: string;
     liquidity: 'instant' | 'hours' | 'days' | 'slow';
     notes?: string[];
+    priceHistory?: { sparkline?: number[]; totalChange: number };
   } | null {
     const notes: string[] = [];
 
@@ -560,7 +630,8 @@ export class ItemValuator {
       const exaltedCount = exaltedMatch ? parseInt(exaltedMatch[1]) : 1;
 
       // Get exalted price from currency map
-      const exaltedPrice = this.currency.get('exalted orb') || 30;
+      const exaltedLine = this.currency.get('exalted orb');
+      const exaltedPrice = exaltedLine?.chaosEquivalent || 30;
 
       let multiplier = 2;
       if (rewardText.toLowerCase().includes('triple')) multiplier = 3;

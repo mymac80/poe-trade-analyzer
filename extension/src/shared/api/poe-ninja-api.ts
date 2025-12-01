@@ -87,8 +87,10 @@ export class PoeNinjaClient {
             lines: itemResponse.data.lines.map((item: any) => ({
               currencyTypeName: item.name,
               chaosEquivalent: item.chaosValue,
-              pay: { value: item.chaosValue }
-            }))
+              // Note: pay/receive fields are not fully populated for scarabs
+              // since they come from itemoverview, not currencyoverview
+            } as PoeNinjaCurrencyLine)),
+            currencyDetails: [] // Empty for scarabs from itemoverview
           };
 
           return converted;
@@ -114,7 +116,7 @@ export class PoeNinjaClient {
             );
 
             if (scarabs.length > 0) {
-              return { lines: scarabs };
+              return { lines: scarabs, currencyDetails: response.data.currencyDetails || [] };
             }
           }
         } catch (e) {
@@ -122,7 +124,7 @@ export class PoeNinjaClient {
         }
       }
 
-      return { lines: [] };
+      return { lines: [], currencyDetails: [] };
     });
   }
 

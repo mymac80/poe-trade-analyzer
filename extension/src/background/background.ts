@@ -1,6 +1,6 @@
 import { PoeNinjaClient } from '@shared/api/poe-ninja-api';
 import { ItemValuator } from '@shared/services/item-valuator';
-import { Item, ValuedItem } from '@shared/models/types';
+import { Item, ValuedItem, PoeNinjaCurrencyResponse } from '@shared/models/types';
 import { createTradeSearch, supportsTradeSearch, buildInscribedUltimatumSearch } from '@shared/services/trade-search-builder';
 
 // Background service worker for POE Stash Pricer extension
@@ -73,10 +73,14 @@ async function initializeValuator(): Promise<void> {
     const marketData = await ninjaClient.fetchAllMarketData();
 
     // Combine fragments and scarabs into a single array
-    const allFragments = {
+    const allFragments: PoeNinjaCurrencyResponse = {
       lines: [
         ...marketData.fragments.lines,
         ...marketData.scarabs.lines
+      ],
+      currencyDetails: [
+        ...(marketData.fragments.currencyDetails || []),
+        ...(marketData.scarabs.currencyDetails || [])
       ]
     };
 

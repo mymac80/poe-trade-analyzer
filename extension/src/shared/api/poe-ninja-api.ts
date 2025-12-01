@@ -37,7 +37,7 @@ export class PoeNinjaClient {
   }
 
   /**
-   * Fetch fragment prices (scarabs, breachstones, emblems, etc.)
+   * Fetch fragment prices (breachstones, emblems, etc.)
    */
   async getFragmentPrices(): Promise<PoeNinjaCurrencyResponse> {
     return this.getCachedData('fragments', async () => {
@@ -47,7 +47,82 @@ export class PoeNinjaClient {
           type: 'Fragment'
         }
       });
+
       return response.data;
+    });
+  }
+
+  /**
+   * Fetch scarab prices (separate category in recent leagues)
+   */
+  async getScarabPrices(): Promise<PoeNinjaCurrencyResponse> {
+    return this.getCachedData('scarabs', async () => {
+      // First try: currencyoverview with Scarab type
+      try {
+        const response = await this.client.get<PoeNinjaCurrencyResponse>('/currencyoverview', {
+          params: {
+            league: this.league,
+            type: 'Scarab'
+          }
+        });
+        if (response.data?.lines?.length > 0) {
+          return response.data;
+        }
+      } catch (error: any) {
+        console.warn(`[POE Pricer] currencyoverview Scarab failed:`, error.message);
+      }
+
+      // Second try: itemoverview with Scarab type (current league uses this endpoint)
+      try {
+        const itemResponse = await this.client.get<PoeNinjaResponse>('/itemoverview', {
+          params: {
+            league: this.league,
+            type: 'Scarab'
+          }
+        });
+
+        if (itemResponse.data?.lines?.length > 0) {
+          // Convert item overview format to currency format
+          const converted: PoeNinjaCurrencyResponse = {
+            lines: itemResponse.data.lines.map((item: any) => ({
+              currencyTypeName: item.name,
+              chaosEquivalent: item.chaosValue,
+              pay: { value: item.chaosValue }
+            }))
+          };
+
+          return converted;
+        }
+      } catch (itemError: any) {
+        console.warn('[POE Pricer] itemoverview Scarab failed:', itemError.message);
+      }
+
+      // Third try: Check if it's in a different category (e.g., "Artifact" in some leagues)
+      const alternativeTypes = ['Artifact', 'Memory', 'Misc'];
+      for (const altType of alternativeTypes) {
+        try {
+          const response = await this.client.get<PoeNinjaCurrencyResponse>('/currencyoverview', {
+            params: {
+              league: this.league,
+              type: altType
+            }
+          });
+
+          if (response.data?.lines) {
+            const scarabs = response.data.lines.filter(line =>
+              line.currencyTypeName.toLowerCase().includes('scarab')
+            );
+
+            if (scarabs.length > 0) {
+              return { lines: scarabs };
+            }
+          }
+        } catch (e) {
+          // Ignore errors for alternative types
+        }
+      }
+
+      return { lines: [] };
     });
   }
 
@@ -170,6 +245,7 @@ export class PoeNinjaClient {
   async fetchAllMarketData(): Promise<{
     currency: PoeNinjaCurrencyResponse;
     fragments: PoeNinjaCurrencyResponse;
+    scarabs: PoeNinjaCurrencyResponse;
     uniques: PoeNinjaResponse;
     gems: PoeNinjaResponse;
     divination: PoeNinjaResponse;
@@ -179,9 +255,10 @@ export class PoeNinjaClient {
   }> {
     console.log('[POE Pricer] Fetching market data from poe.ninja...');
 
-    const [currency, fragments, uniques, gems, divination, oils, essences] = await Promise.all([
+    const [currency, fragments, scarabs, uniques, gems, divination, oils, essences] = await Promise.all([
       this.getCurrencyPrices(),
       this.getFragmentPrices(),
+      this.getScarabPrices(),
       this.getUniqueItemPrices(),
       this.getSkillGemPrices(),
       this.getDivinationCardPrices(),
@@ -196,9 +273,10 @@ export class PoeNinjaClient {
     console.log(`[POE Pricer]   Skill gems: ${gems.lines.length}`);
     console.log(`[POE Pricer]   Currency: ${currency.lines.length}`);
     console.log(`[POE Pricer]   Fragments: ${fragments.lines.length}`);
+    console.log(`[POE Pricer]   Scarabs: ${scarabs.lines.length}`);
     console.log(`[POE Pricer]   Divination cards: ${divination.lines.length}`);
 
-    return { currency, fragments, uniques, gems, divination, oils, essences, divinePrice };
+    return { currency, fragments, scarabs, uniques, gems, divination, oils, essences, divinePrice };
   }
 
   private async fetchItemOverview(type: string): Promise<PoeNinjaResponse> {

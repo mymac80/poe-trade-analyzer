@@ -81,6 +81,15 @@
   color: #fff;
 }
 
+.poe-pricer-status {
+  padding: 8px 16px;
+  background: rgba(76, 175, 80, 0.1);
+  border-bottom: 1px solid rgba(76, 175, 80, 0.2);
+  font-size: 12px;
+  text-align: center;
+  display: none;
+}
+
 .poe-pricer-content {
   padding: 16px;
   max-height: calc(80vh - 60px);

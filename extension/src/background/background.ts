@@ -72,11 +72,19 @@ async function initializeValuator(): Promise<void> {
     const ninjaClient = new PoeNinjaClient(currentLeague);
     const marketData = await ninjaClient.fetchAllMarketData();
 
+    // Combine fragments and scarabs into a single array
+    const allFragments = {
+      lines: [
+        ...marketData.fragments.lines,
+        ...marketData.scarabs.lines
+      ]
+    };
+
     valuator = new ItemValuator(
       marketData.uniques,
       marketData.gems,
       marketData.currency,
-      marketData.fragments,
+      allFragments,
       marketData.divination,
       marketData.oils,
       marketData.essences,
@@ -109,15 +117,38 @@ async function valueItems(items: Item[]): Promise<ValuedItem[]> {
   }
 
   const valuedItems: ValuedItem[] = [];
+  const itemTypeStats: Record<string, {total: number, valued: number, belowThreshold: number, noValue: number}> = {};
 
   for (const item of items) {
     try {
+      // Track stats by baseType
+      const baseType = item.baseType || item.typeLine || 'unknown';
+      if (!itemTypeStats[baseType]) {
+        itemTypeStats[baseType] = { total: 0, valued: 0, belowThreshold: 0, noValue: 0 };
+      }
+      itemTypeStats[baseType].total++;
+
       const valued = valuator.valueItem(item);
-      if (valued && valued.estimatedValue >= minValueChaos) {
-        valuedItems.push(valued);
+      if (valued) {
+        if (valued.estimatedValue >= minValueChaos) {
+          valuedItems.push(valued);
+          itemTypeStats[baseType].valued++;
+        } else {
+          itemTypeStats[baseType].belowThreshold++;
+        }
+      } else {
+        itemTypeStats[baseType].noValue++;
       }
     } catch (error) {
-      console.error('[POE Pricer] Error valuing item:', error);
+      console.error('[POE Pricer] Error valuing item:', item.typeLine, error);
+    }
+  }
+
+  // Log stats
+  console.log('[POE Pricer] Item valuation stats:');
+  for (const [type, stats] of Object.entries(itemTypeStats)) {
+    if (stats.total > 1) { // Only log types with multiple items
+      console.log(`  ${type}: ${stats.valued} valued, ${stats.belowThreshold} below threshold (${minValueChaos}c), ${stats.noValue} no value`);
     }
   }
 

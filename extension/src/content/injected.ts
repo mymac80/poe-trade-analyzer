@@ -19,7 +19,7 @@
     const url = (this as any)._url || '';
 
     if (url.includes('/character-window/get-stash-items')) {
-      console.log('[POE Pricer] Intercepted stash API call');
+      console.log('[POE Pricer] Intercepted stash API call:', url);
 
       this.addEventListener('load', function() {
         try {
@@ -28,10 +28,19 @@
           if (data.items) {
             console.log(`[POE Pricer] Found ${data.items.length} items in stash tab`);
 
+            // Extract tab information from URL parameters
+            const urlObj = new URL(url, window.location.origin);
+            const tabIndex = urlObj.searchParams.get('tabIndex');
+            const tabs = urlObj.searchParams.get('tabs');
+
             // Use postMessage to send data to content script (crosses isolated world boundary)
             window.postMessage({
               type: 'POE_PRICER_STASH_DATA',
-              items: data.items
+              items: data.items,
+              tabIndex: tabIndex,
+              tabs: tabs,
+              fragmentLayout: data.fragmentLayout, // Include fragment layout
+              fullResponse: data // Send entire response for debugging
             }, '*');
           }
         } catch (error) {
@@ -62,9 +71,18 @@
         if (data.items) {
           console.log(`[POE Pricer] Found ${data.items.length} items in stash tab`);
 
+          // Extract tab information from URL parameters
+          const urlObj = new URL(url, window.location.origin);
+          const tabIndex = urlObj.searchParams.get('tabIndex');
+          const tabs = urlObj.searchParams.get('tabs');
+
           window.postMessage({
             type: 'POE_PRICER_STASH_DATA',
-            items: data.items
+            items: data.items,
+            tabIndex: tabIndex,
+            tabs: tabs,
+            fragmentLayout: data.fragmentLayout, // Include fragment layout
+            fullResponse: data // Send entire response for debugging
           }, '*');
         }
       } catch (error) {

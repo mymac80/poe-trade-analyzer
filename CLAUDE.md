@@ -287,6 +287,7 @@ Page Context (POE's scripts)
 Fetches market data from poe.ninja API:
 - **Methods**:
   - `getCurrencyPrices()` - Currency & fragments
+  - `getScarabPrices()` - Scarabs (tries multiple endpoints/categories)
   - `getUniqueItemPrices()` - All unique item categories
   - `getSkillGemPrices()` - Skill gems with level/quality
   - `getDivinationCardPrices()` - Divination cards
@@ -297,6 +298,7 @@ Fetches market data from poe.ninja API:
   - 5-minute in-memory cache
   - Automatic retries on failure
   - Combines multiple API calls (e.g., all unique categories)
+  - Multi-endpoint fallback for scarabs (currencyoverview → itemoverview → alternative categories)
 
 ### 2. ItemValuator (`shared/services/item-valuator.ts`)
 
@@ -341,6 +343,21 @@ Values POE items based on market data:
   - **Confidence**: Always "Medium" (heuristic estimate, not poe.ninja data)
   - **Special notes**: Includes sacrifice/reward details, failure risk warning, "Check trade site for exact pricing"
   - **Limitation**: Less accurate than poe.ninja-based prices, but better than missing valuable items entirely
+
+- **Scarab Support** (Fixed 2024-11-30):
+  - **Challenge**: Scarabs have `frameType: 0` (Normal), not `frameType: 5` (Currency)
+  - **Solution 1 - API Fetching**: `getScarabPrices()` tries multiple endpoints:
+    1. `/currencyoverview?type=Scarab` (older leagues)
+    2. `/itemoverview?type=Scarab` (current league - Keepers uses this)
+    3. Alternative categories: Artifact, Memory, Misc (fallback for edge cases)
+  - **Solution 2 - Valuation Logic**:
+    - Added scarabs to `isWorthlessItem()` exclusion list (they were being filtered out!)
+    - frameType 0/1/2 items now check `valueCurrency()` BEFORE checking `valueRareItem()`
+    - This allows scarabs, fragments, oils, and essences to be valued correctly
+  - **Result**: All scarabs now price correctly, including high-value ones like:
+    - Horned Scarab of Pandemonium: ~150c
+    - Ultimatum Scarab of Catalysing: ~195c
+    - Breach Scarab of Lordship: ~869c (86923c was a poe.ninja display bug)
 
 - **Returns**:
   - `estimatedValue` - Price in chaos orbs

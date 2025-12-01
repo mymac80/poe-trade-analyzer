@@ -157,7 +157,18 @@ export class ItemValuator {
       case 0: // Normal
       case 1: // Magic
       case 2: // Rare
-        // Check if it's a valuable base or crafting item
+        // First check if it's a currency-like item (fragments, scarabs, oils, essences)
+        // These items have frameType 0 but should be valued like currency
+        const currencyLikeValue = this.valueCurrency(item);
+        if (currencyLikeValue) {
+          value = currencyLikeValue.value;
+          confidence = 'high';
+          reasoning = currencyLikeValue.reasoning;
+          liquidityEstimate = 'instant';
+          break;
+        }
+
+        // Otherwise check if it's a valuable base or crafting item
         const rareValue = this.valueRareItem(item);
         if (rareValue) {
           value = rareValue.value;
@@ -608,6 +619,19 @@ export class ItemValuator {
   }
 
   private isWorthlessItem(item: Item): boolean {
+    const itemName = (item.typeLine || '').toLowerCase();
+
+    // Don't skip currency-like items (fragments, scarabs, oils, essences)
+    // These have frameType 0 but are valuable
+    if (itemName.includes('scarab') ||
+        itemName.includes('fragment') ||
+        itemName.includes(' oil') ||
+        itemName.includes('essence') ||
+        itemName.includes('breachstone') ||
+        itemName.includes('emblem')) {
+      return false;
+    }
+
     // Skip identified rares with bad mods
     if (item.frameType === 2 && item.identified && !this.is6Link(item) && item.ilvl < 84) {
       return true;

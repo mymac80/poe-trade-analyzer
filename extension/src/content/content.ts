@@ -14,6 +14,8 @@ function supportsTradeSearch(item: Item): boolean {
 // State
 let currentStashItems: Item[] = [];
 let cachedStashItems: Item[] = []; // Cache most recent stash data
+let currentTabIndex: string | null = null; // Track current tab to detect tab changes
+let accumulatedItems: Map<string, Item[]> = new Map(); // Accumulate items from subtabs
 let valuedItems: ValuedItem[] = [];
 let isAnalyzing = false;
 
@@ -34,6 +36,7 @@ function createOverlayPanel(): void {
         <button id="poe-pricer-close" class="poe-pricer-btn-close">×</button>
       </div>
     </div>
+    <div id="poe-pricer-status" class="poe-pricer-status"></div>
     <div id="poe-pricer-content" class="poe-pricer-content">
       <p class="poe-pricer-hint">Click "Analyze" to price items in your current stash tab</p>
     </div>
@@ -118,6 +121,7 @@ async function analyzeCurrentStash(): Promise<void> {
     console.log(`[POE Pricer] Found ${items.length} items in stash`);
 
     // Send to background script for valuation
+    console.log(`[POE Pricer] Sending ${items.length} items for valuation`);
     const response = await chrome.runtime.sendMessage({
       type: 'VALUE_ITEMS',
       items: items
@@ -125,6 +129,14 @@ async function analyzeCurrentStash(): Promise<void> {
 
     if (response.success) {
       valuedItems = response.valuedItems;
+      console.log(`[POE Pricer] Received ${valuedItems.length} valued items`);
+
+      // Debug: Log sample of items that were filtered out
+      const filteredOut = items.length - valuedItems.length;
+      if (filteredOut > 0) {
+        console.log(`[POE Pricer] ${filteredOut} items were filtered out (below threshold or no value)`);
+      }
+
       displayResults(valuedItems);
     } else {
       if (contentDiv) {
@@ -145,20 +157,31 @@ async function analyzeCurrentStash(): Promise<void> {
  * Extract items from stash page
  */
 async function extractStashItems(): Promise<Item[]> {
-  // Method 1: Use cached data if available
+  // Method 1: Use accumulated data from all subtabs
+  if (accumulatedItems.size > 0) {
+    // Combine all items from all subtabs
+    const allItems: Item[] = [];
+    for (const items of accumulatedItems.values()) {
+      allItems.push(...items);
+    }
+    console.log(`[POE Pricer] Using accumulated stash data from ${accumulatedItems.size} subtabs (${allItems.length} total items)`);
+    return allItems;
+  }
+
+  // Method 2: Use simple cached data if available (single tab)
   if (cachedStashItems.length > 0) {
     console.log(`[POE Pricer] Using cached stash data (${cachedStashItems.length} items)`);
     return cachedStashItems;
   }
 
-  // Method 2: Try to find React component data
+  // Method 3: Try to find React component data
   const items = await extractFromReactData();
   if (items && items.length > 0) {
     console.log('[POE Pricer] Extracted items from React data');
     return items;
   }
 
-  // Method 3: Wait for next API call (user needs to switch tabs)
+  // Method 4: Wait for next API call (user needs to switch tabs)
   console.log('[POE Pricer] No cached data. Please switch stash tabs to load items...');
   return new Promise((resolve) => {
     const contentDiv = document.getElementById('poe-pricer-content');
@@ -399,6 +422,35 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
+/**
+ * Update status message showing cached subtabs
+ */
+function updateStatusMessage(): void {
+  const statusDiv = document.getElementById('poe-pricer-status');
+  if (!statusDiv) return;
+
+  if (accumulatedItems.size === 0) {
+    statusDiv.innerHTML = '';
+    statusDiv.style.display = 'none';
+    return;
+  }
+
+  const totalItems = Array.from(accumulatedItems.values()).reduce((sum, items) => sum + items.length, 0);
+
+  // Extract section names from keys (format: "tabIndex-section")
+  const sections = Array.from(accumulatedItems.keys())
+    .map(key => key.split('-')[1])
+    .filter(section => section !== 'main' && section !== 'undefined');
+
+  let statusText = `✓ ${totalItems} items`;
+  if (sections.length > 0) {
+    statusText += ` (${sections.join(', ')})`;
+  }
+
+  statusDiv.innerHTML = `<span style="color: #4CAF50; font-size: 0.9em;">${statusText}</span>`;
+  statusDiv.style.display = 'block';
+}
+
 // CRITICAL: Inject script into page context IMMEDIATELY
 // Content scripts run in isolated world - can't intercept page's requests
 // Must inject into page context to intercept POE's own XHR/fetch calls
@@ -420,7 +472,71 @@ window.addEventListener('message', (event: MessageEvent) => {
   if (event.source !== window) return;
 
   if (event.data.type === 'POE_PRICER_STASH_DATA') {
-    cachedStashItems = event.data.items || [];
+    const items = event.data.items || [];
+    const tabIndex = event.data.tabIndex;
+    const tabs = event.data.tabs; // This identifies the subtab
+    const fragmentLayout = event.data.fragmentLayout;
+
+    // Simple cache for backwards compatibility
+    cachedStashItems = items;
+
+    // Advanced caching: accumulate items from subtabs
+    if (tabIndex !== null && tabIndex !== undefined) {
+      // Check if we've switched to a different main tab
+      if (currentTabIndex !== null && currentTabIndex !== tabIndex) {
+        console.log(`[POE Pricer] Switched from tab ${currentTabIndex} to ${tabIndex}, clearing accumulated items`);
+        accumulatedItems.clear();
+      }
+
+      // Update current tab
+      currentTabIndex = tabIndex;
+
+      // If this is a fragment tab with layout, split items by section
+      if (fragmentLayout && fragmentLayout.layout) {
+        console.log(`[POE Pricer] Fragment tab detected, splitting ${items.length} items by section`);
+
+        // Group items by section
+        const itemsBySection: Map<string, Item[]> = new Map();
+
+        for (const item of items) {
+          // Find which section this item belongs to
+          const layoutKey = `${item.x},${item.y}`;
+          const layoutEntry = fragmentLayout.layout[layoutKey];
+
+          if (layoutEntry && layoutEntry.section) {
+            const section = layoutEntry.section;
+            if (!itemsBySection.has(section)) {
+              itemsBySection.set(section, []);
+            }
+            itemsBySection.get(section)!.push(item);
+          } else {
+            // Item not in layout, add to 'unknown' section
+            if (!itemsBySection.has('unknown')) {
+              itemsBySection.set('unknown', []);
+            }
+            itemsBySection.get('unknown')!.push(item);
+          }
+        }
+
+        // Store each section separately
+        for (const [section, sectionItems] of itemsBySection.entries()) {
+          const subtabKey = `${tabIndex}-${section}`;
+          accumulatedItems.set(subtabKey, sectionItems);
+          console.log(`[POE Pricer] Cached ${sectionItems.length} items for section: ${section}`);
+        }
+
+        console.log(`[POE Pricer] Total sections cached: ${accumulatedItems.size}`);
+      } else {
+        // Regular tab without sections
+        const subtabKey = tabs !== null && tabs !== undefined ? `${tabIndex}-${tabs}` : `${tabIndex}-main`;
+        accumulatedItems.set(subtabKey, items);
+        console.log(`[POE Pricer] Cached ${items.length} items for tab ${tabIndex}, subtab key: ${subtabKey}`);
+        console.log(`[POE Pricer] Total subtabs cached: ${accumulatedItems.size}`);
+      }
+
+      // Update status message
+      updateStatusMessage();
+    }
   }
 });
 

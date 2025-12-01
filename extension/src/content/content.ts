@@ -2,6 +2,15 @@ import { Item, ValuedItem, StashTabResponse } from '@shared/models/types';
 
 console.log('[POE Pricer] Content script loaded');
 
+/**
+ * Check if an item type supports trade search pricing
+ * Duplicated here to avoid code splitting issues with Vite
+ */
+function supportsTradeSearch(item: Item): boolean {
+  // For now, only support Inscribed Ultimatums
+  return item.typeLine.includes('Inscribed Ultimatum');
+}
+
 // State
 let currentStashItems: Item[] = [];
 let cachedStashItems: Item[] = []; // Cache most recent stash data
@@ -292,15 +301,19 @@ function displayResults(items: ValuedItem[]): void {
 
   // Show top items
   const topItems = items.slice(0, 20);
-  for (const valued of topItems) {
+  for (let i = 0; i < topItems.length; i++) {
+    const valued = topItems[i];
     const item = valued.item;
     const itemName = item.name || item.typeLine;
 
     const confidenceClass = `confidence-${valued.confidence}`;
     const liquidityClass = `liquidity-${valued.liquidityEstimate}`;
 
+    // Check if item supports trade search
+    const showTradeButton = supportsTradeSearch(item);
+
     html += `
-      <div class="poe-pricer-item ${confidenceClass}">
+      <div class="poe-pricer-item ${confidenceClass}" data-item-index="${i}">
         <div class="item-header">
           <span class="item-name">${escapeHtml(itemName)}</span>
           <span class="item-value">${valued.estimatedValue.toFixed(0)}c</span>
@@ -311,6 +324,15 @@ function displayResults(items: ValuedItem[]): void {
         </div>
         ${valued.specialNotes && valued.specialNotes.length > 0 ?
           `<div class="item-notes">${valued.specialNotes.join(', ')}</div>` : ''}
+        ${valued.marketData ?
+          `<div class="item-trade-data">
+            <strong>Trade Price:</strong> ~${valued.marketData.medianPrice?.toFixed(0) || valued.marketData.averagePrice?.toFixed(0) || '?'}c
+            <span style="color: #888; font-size: 0.9em;">(${valued.marketData.listingsFound} listings, lowest: ${valued.marketData.lowestPrice?.toFixed(0)}c)</span>
+          </div>` : ''}
+        ${showTradeButton ?
+          `<button class="poe-pricer-trade-btn" data-item-index="${i}">
+            Check Trade Price
+          </button>` : ''}
       </div>
     `;
   }
@@ -322,6 +344,50 @@ function displayResults(items: ValuedItem[]): void {
   }
 
   contentDiv.innerHTML = html;
+
+  // Add event listeners for trade price buttons
+  const tradeBtns = contentDiv.querySelectorAll('.poe-pricer-trade-btn');
+  tradeBtns.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const target = e.target as HTMLElement;
+      const itemIndex = parseInt(target.dataset.itemIndex || '0');
+      const valued = items[itemIndex];
+
+      if (!valued) return;
+
+      // Disable button and show loading state
+      target.textContent = 'Fetching...';
+      target.setAttribute('disabled', 'true');
+
+      try {
+        // Request trade price from background worker
+        const response = await chrome.runtime.sendMessage({
+          type: 'GET_TRADE_PRICE',
+          item: valued.item
+        });
+
+        if (response.success && response.data) {
+          // Update the valued item with market data
+          valued.marketData = {
+            listingsFound: response.data.totalListings,
+            averagePrice: response.data.averagePrice,
+            medianPrice: response.data.medianPrice,
+            lowestPrice: response.data.lowestPrice,
+            trend: 'stable'
+          };
+
+          // Re-render just this item
+          displayResults(items);
+        } else {
+          target.textContent = 'Error';
+          console.error('[POE Pricer] Trade price fetch failed:', response.error);
+        }
+      } catch (error) {
+        target.textContent = 'Error';
+        console.error('[POE Pricer] Error fetching trade price:', error);
+      }
+    });
+  });
 }
 
 /**

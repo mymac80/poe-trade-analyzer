@@ -5,7 +5,9 @@
   "description": "Automatically price items in your Path of Exile stash tabs using poe.ninja market data",
   "permissions": [
     "storage",
-    "webRequest"
+    "webRequest",
+    "tabs",
+    "scripting"
   ],
   "host_permissions": [
     "https://poe.ninja/*",

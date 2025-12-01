@@ -196,8 +196,9 @@ export interface ValuedItem {
   };
   marketData?: {
     listingsFound: number;
-    averagePrice?: number;
-    lowestPrice?: number;
+    averagePrice?: number; // Average excluding bottom 20% lowballs
+    medianPrice?: number; // Median excluding bottom 20% lowballs
+    lowestPrice?: number; // Absolute lowest (might be lowball)
     trend?: 'rising' | 'falling' | 'stable';
   };
   liquidityEstimate: 'instant' | 'hours' | 'days' | 'slow';

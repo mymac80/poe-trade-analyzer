@@ -10,6 +10,7 @@ export default defineConfig({
       input: {
         background: resolve(__dirname, 'src/background/background.ts'),
         content: resolve(__dirname, 'src/content/content.ts'),
+        'trade-content': resolve(__dirname, 'src/content/trade-content.ts'),
         injected: resolve(__dirname, 'src/content/injected.ts'),
         popup: resolve(__dirname, 'src/popup/popup.ts'),
       },

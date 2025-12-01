@@ -314,6 +314,16 @@ Values POE items based on market data:
     - Stack sizes for currency/cards
     - **Inscribed Ultimatums** (heuristic-based valuation)
 
+- **Variant Matching** (Added 2024-11-30):
+  - **Gems**: Stores multiple variants per gem (different level/quality/corruption combinations)
+    - Matches based on: gem level (+10 points), quality (+10 points), corruption (+5 points)
+    - **Tiebreaker**: When scores are equal, selects variant with closest quality match
+    - Example: Level 21/0% corrupted gem correctly matches 21/0 variant, not 21/23
+  - **Unique Items**: Stores multiple variants per unique (corrupted/non-corrupted, 6-link/non-6-link)
+    - Matches based on: corruption status (+10 points), link count (+10 points)
+    - **Tiebreaker**: When scores are equal, selects variant with closest link count
+    - Example: 6-link corrupted unique correctly matches 6-link corrupted variant, not base variant
+
 - **Inscribed Ultimatum Support** (Added 2024-11-30):
   - **Why needed**: poe.ninja does NOT track Inscribed Ultimatums in their API
   - **Detection**: Checks `typeLine` for "Inscribed Ultimatum"
@@ -745,6 +755,7 @@ When working on this project:
 5. **Test in Chrome** before considering done
 6. **Update manifest version** when making breaking changes
 7. **Reuse existing valuation logic** - it's well-tested and accurate
+8. **Variant matching is critical** - Gems and Uniques have multiple poe.ninja variants; always use scoring + tiebreaker logic
 
 ### When POE Changes Break the Extension
 

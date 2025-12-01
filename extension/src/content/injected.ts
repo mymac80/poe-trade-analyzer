@@ -50,9 +50,9 @@
 (function() {
   const originalFetch = window.fetch;
 
-  window.fetch = async function(...args: any[]) {
-    const url = args[0].toString();
-    const response = await originalFetch.apply(this, args);
+  window.fetch = async function(input: RequestInfo | URL, init?: RequestInit) {
+    const url = input.toString();
+    const response = await originalFetch.call(this, input, init);
 
     if (url.includes('/character-window/get-stash-items')) {
       const clone = response.clone();

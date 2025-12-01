@@ -4,7 +4,7 @@ import { Item, ValuedItem, PoeNinjaResponse, PoeNinjaCurrencyResponse, PoeNinjaL
  * Service for valuing items based on market data
  */
 export class ItemValuator {
-  private uniqueItems: Map<string, PoeNinjaLine> = new Map();
+  private uniqueItems: Map<string, PoeNinjaLine[]> = new Map(); // Changed to array for multiple variants
   private gems: Map<string, PoeNinjaLine[]> = new Map();
   private currency: Map<string, number> = new Map();
   private fragments: Map<string, number> = new Map();
@@ -36,10 +36,13 @@ export class ItemValuator {
     oilData: PoeNinjaCurrencyResponse,
     essenceData: PoeNinjaCurrencyResponse
   ): void {
-    // Load uniques
+    // Load uniques (can have multiple variants for same unique)
     for (const line of uniqueData.lines) {
       const key = this.normalizeItemName(line.name, line.baseType);
-      this.uniqueItems.set(key, line);
+      if (!this.uniqueItems.has(key)) {
+        this.uniqueItems.set(key, []);
+      }
+      this.uniqueItems.get(key)!.push(line);
     }
 
     // Load gems (can have multiple variants for same gem)
@@ -203,9 +206,9 @@ export class ItemValuator {
     const baseType = item.baseType || item.typeLine;
     const key = this.normalizeItemName(itemName, baseType);
 
-    const marketData = this.uniqueItems.get(key);
+    const uniqueVariants = this.uniqueItems.get(key);
 
-    if (!marketData) {
+    if (!uniqueVariants || uniqueVariants.length === 0) {
       return {
         value: 1,
         confidence: 'low',
@@ -214,34 +217,66 @@ export class ItemValuator {
       };
     }
 
-    let value = marketData.chaosValue;
+    const itemIs6Link = this.is6Link(item);
+
+    // Find best matching variant
+    let bestMatch: PoeNinjaLine | null = null;
+    let bestScore = -1;
+    let bestLinkDiff = Infinity; // Track link difference for tiebreaking
+
+    for (const variant of uniqueVariants) {
+      let score = 0;
+
+      // Match corruption status
+      if (variant.corrupted === item.corrupted) score += 10;
+
+      // Match links
+      const variantLinks = variant.links || 0;
+      const itemLinks = itemIs6Link ? 6 : 0;
+      if (variantLinks === itemLinks) score += 10;
+
+      // Calculate link difference for tiebreaking
+      const linkDiff = Math.abs(variantLinks - itemLinks);
+
+      // Update best match if:
+      // 1. This variant has a higher score, OR
+      // 2. Same score but closer link match
+      if (score > bestScore || (score === bestScore && linkDiff < bestLinkDiff)) {
+        bestScore = score;
+        bestLinkDiff = linkDiff;
+        bestMatch = variant;
+      }
+    }
+
+    if (!bestMatch) {
+      return null;
+    }
+
+    let value = bestMatch.chaosValue;
     const notes: string[] = [];
 
-    // Check for 6-link
-    if (this.is6Link(item)) {
+    // Add notes about special attributes
+    if (itemIs6Link) {
       notes.push('6-LINK');
       if (value < 10) {
         value = Math.max(value, 10); // Minimum value for 6-link
       }
     }
 
-    // Check for corruption
     if (item.corrupted) {
       notes.push('Corrupted');
-      // Corrupted items usually worth less unless they have good implicits
+      // Check for good corruption implicits
       if (item.implicitMods && item.implicitMods.length > 0) {
         const hasGoodCorruption = item.implicitMods.some(mod =>
           mod.includes('+') && (mod.includes('level') || mod.includes('maximum') || mod.includes('increased'))
         );
         if (hasGoodCorruption) {
           notes.push('Good corruption implicit');
-          value *= 1.5;
         }
       }
     }
 
-    // Check if item is meta-relevant
-    const isHighValue = value > 50;
+    // Determine liquidity based on value
     const liquidity: 'instant' | 'hours' | 'days' | 'slow' =
       value > 100 ? 'hours' :
       value > 20 ? 'days' :
@@ -249,8 +284,8 @@ export class ItemValuator {
 
     return {
       value,
-      confidence: 'high',
-      reasoning: `Unique "${itemName}" market price: ${value.toFixed(1)}c`,
+      confidence: bestScore >= 20 ? 'high' : bestScore >= 10 ? 'medium' : 'low',
+      reasoning: `Unique "${itemName}" (${bestMatch.links || 0}-link${item.corrupted ? ', corrupted' : ''})`,
       liquidity,
       notes: notes.length > 0 ? notes : undefined
     };
@@ -278,6 +313,7 @@ export class ItemValuator {
     // Find best matching variant
     let bestMatch: PoeNinjaLine | null = null;
     let bestScore = -1;
+    let bestQualityDiff = Infinity; // Track quality difference for tiebreaking
 
     for (const variant of gemVariants) {
       let score = 0;
@@ -285,8 +321,15 @@ export class ItemValuator {
       if (variant.gemQuality === quality) score += 10;
       if (variant.corrupted === item.corrupted) score += 5;
 
-      if (score > bestScore) {
+      // Calculate quality difference for tiebreaking
+      const qualityDiff = Math.abs((variant.gemQuality || 0) - quality);
+
+      // Update best match if:
+      // 1. This variant has a higher score, OR
+      // 2. Same score but closer quality match
+      if (score > bestScore || (score === bestScore && qualityDiff < bestQualityDiff)) {
         bestScore = score;
+        bestQualityDiff = qualityDiff;
         bestMatch = variant;
       }
     }
@@ -594,11 +637,21 @@ export class ItemValuator {
   }
 
   private getGemQuality(item: Item): number {
+    // Check main properties first
     const qualityProp = item.properties?.find(p => p.name === 'Quality');
     if (qualityProp && qualityProp.values.length > 0) {
       const qualityStr = qualityProp.values[0][0];
       return parseInt(qualityStr.replace(/[^0-9]/g, '')) || 0;
     }
+
+    // Check additional properties (some gems store quality here)
+    const additionalQualityProp = item.additionalProperties?.find(p => p.name === 'Quality');
+    if (additionalQualityProp && additionalQualityProp.values.length > 0) {
+      const qualityStr = additionalQualityProp.values[0][0];
+      return parseInt(qualityStr.replace(/[^0-9]/g, '')) || 0;
+    }
+
+    // No quality found (0% quality gems don't have Quality property)
     return 0;
   }
 
